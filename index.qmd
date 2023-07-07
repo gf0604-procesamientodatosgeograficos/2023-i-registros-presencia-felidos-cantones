@@ -1,5 +1,5 @@
 ---
-title: "Registros de presencia de félidos en cantones de Costa Rica"
+title: "Estadísticas de registros de presencia de félidos en cantones de Costa Rica"
 format: 
   html:
     page-layout: custom
@@ -56,7 +56,9 @@ cantones <-
   st_transform(4326)
 
 
-# Unión espacial de registros de presencia de félidos y cantones
+# Unión espacial de registros de presencia de félidos y cantones.
+# Este es el conjunto de datos que va a filtrarse
+# con los criterios que especifique el usuario.
 felidos_union_cantones <-
   st_join(
     x = felidos,
@@ -88,12 +90,12 @@ selectInput(
 #| label: panel-widgets-salida
 #| panel: center
 
-h3("Tabla de cantidad de registros de presencia en cantones")
+h3("Gráfico de cantidad de registros de presencia en cantones")
 HTML("<p>")
 
-# Salida de tabla interactiva
-dataTableOutput(
-	outputId =  "tabla" # identificador del widget
+# Salida de gráfico interactivo
+plotlyOutput(
+	outputId =  "grafico" # identificador del widget
 )
 ```
 
@@ -107,7 +109,7 @@ filtrar_felidos_union_cantones <- reactive({
   # Valor inicial del objeto que va a retornarse
   felidos_union_cantones_filtrados <- felidos_union_cantones
   
-  # Se realiza el filtro, solamente si el usario ha seleccionado 
+  # Se realiza el filtro por especie, solamente si el usario ha seleccionado 
   # una opción diferente a "Todas" en la lista de selección de especies
   if (input$especie != "Todas") {
     felidos_union_cantones_filtrados <-
@@ -118,25 +120,43 @@ filtrar_felidos_union_cantones <- reactive({
   return(felidos_union_cantones_filtrados)
 }) 
 
-# Generación de tabla interactiva
-output$tabla <- renderDataTable({
+# Generación de gráfico interactivo Plotly
+output$grafico <- renderPlotly({
 	# Filtrado del conjunto de datos
   felidos_union_cantones <- filtrar_felidos_union_cantones()
   
-  # Tabla interactiva
-  felidos_union_cantones |>
-    st_drop_geometry() |>
-    group_by(canton) |>
-    summarize(cantidad_registros = n()) |>
-    drop_na(canton) |> # eliminar los registros en "cantón nulo" (los que caen en el mar)
-    arrange(desc(cantidad_registros)) |>
-    datatable(
-    	rownames = FALSE,
-      colnames = c("Cantón", "Cantidad de registros de presencia"),
-      options = list(
-      	pageLength = 5,
-        language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json')
-      )
-    )
+	# Cálculo de la cantidad de registros de presencia en cantones
+	cantidad_registros_cantones <-
+	  felidos_union_cantones |>
+	  st_drop_geometry() |>
+	  group_by(canton) |>
+	  summarize(cantidad_registros = n()) |> # conteo de los registros de presencia (puntos)
+		drop_na(canton) # eliminación de los registros en cantón "nulo" (los que caen en el mar)
+  
+  # Gráfico ggplot2
+	grafico_ggplot2 <-
+	  cantidad_registros_cantones |>
+	  ggplot(
+	    aes(
+	      x = reorder(canton, -cantidad_registros), 
+	      y = cantidad_registros
+	    )
+	  ) +
+	  geom_col(
+	    aes(
+	      text = paste0(
+	        "Cantón", ": ", canton, "\n",
+	        "Cantidad de registros: ", cantidad_registros
+	      )
+	    )    
+	  ) +
+	  xlab("Cantón") +
+	  ylab("Cantidad de registros de presencia") +  
+	  theme_bw() +
+	  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+	
+# Gráfico plotly
+ggplotly(grafico_ggplot2, tooltip = "text") |> 
+  config(locale = 'es')	
 })
 ```
